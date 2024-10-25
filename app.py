@@ -9,14 +9,16 @@ CORS(app)
 @app.route('/blast', methods=['POST'])
 def run_blast():
     try:
-        # Get the FASTA sequence from the request
+        # Get the FASTA sequence, blast type, and database from the request
         fasta_sequence = request.json.get('sequence')
+        blast_type = request.json.get('blast_type', 'blastn')  # Default to 'blastn'
+        database = request.json.get('database', 'nt')  # Default to 'nt' (nucleotide database)
 
         if not fasta_sequence:
             return jsonify({"error": "No FASTA sequence provided"}), 400
 
-        # Run the BLAST search
-        result_handle = NCBIWWW.qblast("blastp", "nr", fasta_sequence)
+        # Run the BLAST search with the selected type and database
+        result_handle = NCBIWWW.qblast(blast_type, database, fasta_sequence)
 
         # Save the result as an HTML file
         html_file_path = "blast_result.html"
