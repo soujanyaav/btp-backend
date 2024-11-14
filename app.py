@@ -1,18 +1,18 @@
-
 from flask import Flask, request, jsonify, send_file
 from Bio.Blast import NCBIWWW
 from flask_cors import CORS
-from bs4 import BeautifulSoup
-import openai
+import google.generativeai as genai
 import os
 import time
 
 app = Flask(__name__)
 CORS(app)
 
-openai.api_key = "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"
-
 status_message = "Idle"
+
+# Configure the Google Generative AI client
+genai.configure(api_key="AIzaSyDGVQNLfg5MQNaN33KI01cXvjaw6-9uG1U")
+model = genai.GenerativeModel("gemini-1.5-flash")
 
 @app.route('/blast', methods=['POST'])
 def run_blast():
@@ -33,46 +33,35 @@ def run_blast():
             save_to.write(result_handle.read())
         result_handle.close()
 
-        status_message = "Processing HTML content..."
-        time.sleep(2)  # Simulate delay for frontend updates
+        # Read the first 2000 characters of the HTML file
+        with open(html_file_path, "r") as file:
+            blastresult = file.read(2000)
 
-        summary = analyze_blast_file(html_file_path)
-        
+        # Create the prompt variable
+        prompt = (
+            "I am using this as an direct output to a website where the user inputs ascension number to get the source of collection so answer accordingly. I am sending the ascension number to the ncbi website which generates the XML/HTML file which is sent to you. Extract and identify the environmental source of collection for the organism. Include relevant details such as habitat type, specific location, and environmental conditions associated with the organism or strain described. In most of the cases it may not have any source in it so use the details provided to give the source on your own using all the relevant resources. Never say not given in this record, etc give the closest match that you encounter. Just give the ouput in one line"
+            # "Print the exact input"
+        )
+
+        # Concatenate prompt and blastresult to form combprompt
+        combprompt = prompt + "\n\n" + blastresult
+
+        # Send the combprompt to the Google Generative AI model
+        status_message = "Sending data to Google Generative AI..."
+        response = model.generate_content(combprompt)
+        response_text = response.text.strip()
+
         status_message = "Completed"
-        return jsonify({"summary": summary, "file_url": f"/blast-result"}), 200
+        return jsonify({
+            "file_url": f"/blast-result",
+            "preview_text": blastresult,
+            "combined_prompt": combprompt,
+            "response": response_text
+        }), 200
 
     except Exception as e:
         status_message = "Error occurred"
         return jsonify({"error": str(e)}), 500
-
-def analyze_blast_file(file_path):
-    global status_message
-    prompt = """
-    Analyze this BLAST HTML file and provide only the source of collection:
-    Source of collection: Indicate the species or origin (e.g., Homo sapiens, soil, marine sample).
-    Summarize findings in 3 lines. I am using gpt api to directly print the result on my website so answer accordingly
-    """
-    
-    # Parse HTML and extract key text data
-    with open(file_path, "r") as file:
-        soup = BeautifulSoup(file, "html.parser")
-
-    # Extract relevant data (adjust selectors as necessary for your BLAST HTML structure)
-    main_content = soup.get_text(separator=" ", strip=True)
-    words = main_content.split()
-    limited_text = " ".join(words[:200])  # Limit to 2000 words for prompt
-
-    status_message = "Sending processed data to ChatGPT..."
-    response = openai.ChatCompletion.create(
-        model="gpt-3.5-turbo",
-        messages=[
-            {"role": "system", "content": "You are a helpful assistant."},
-            {"role": "user", "content": f"{prompt}\n\n{limited_text}"}
-        ],
-        max_tokens=150
-    )
-
-    return response['choices'][0]['message']['content'].strip()
 
 @app.route('/status', methods=['GET'])
 def get_status():
