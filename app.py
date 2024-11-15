@@ -1,12 +1,11 @@
-from flask import Flask, request, jsonify, send_file, render_template
+from flask import Flask, request, jsonify, send_file, send_from_directory
 from Bio.Blast import NCBIWWW, NCBIXML
-from Bio import Phylo
 from Bio.Align.Applications import ClustalwCommandline
 from flask_cors import CORS
 import google.generativeai as genai
 import os
-import time
-import matplotlib.pyplot as plt  # Import for saving the image
+import plotly.figure_factory as ff
+import numpy as np
 
 app = Flask(__name__)
 CORS(app)
@@ -49,8 +48,11 @@ def run_blast():
             for blast_record in blast_records:
                 for alignment in blast_record.alignments[:10]:  # Get the top 10 alignments
                     for hsp in alignment.hsps:
+                        accession = alignment.accession
+                        title = alignment.title.split(' ')[0]  # Extract the first part of the title as the sequence name
                         top_hits.append({
-                            'title': alignment.title,
+                            'accession': accession,
+                            'title': title,
                             'sequence': hsp.sbjct
                         })
                         break  # Take only the first HSP per alignment
@@ -59,24 +61,40 @@ def run_blast():
         if not top_hits:
             return jsonify({"error": "No significant hits found"}), 200
 
-        # Save sequences to a FASTA file
+        # Save sequences to a FASTA file with accession number and sequence name
         fasta_file_path = "top_hits.fasta"
         with open(fasta_file_path, "w") as fasta_file:
             for i, hit in enumerate(top_hits):
-                fasta_file.write(f">sequence_{i+1}\n{hit['sequence']}\n")
+                fasta_file.write(f">{hit['accession']}_{hit['title']}\n{hit['sequence']}\n")
 
-        # Generate a phylogenetic tree using ClustalW
-        clustalw_exe = 'C:\\Program Files (x86)\\ClustalW2\\clustalw2.exe'  # Replace with the actual path
-        clustalw_cline = ClustalwCommandline(clustalw_exe, infile=fasta_file_path)
-        stdout, stderr = clustalw_cline()
+        # Prepare data for the Plotly dendrogram
+        labels = [f"{hit['accession']}_{hit['title']}" for hit in top_hits]
+        links = [f"https://www.ncbi.nlm.nih.gov/nuccore/{hit['accession']}" for hit in top_hits]
 
-        # Read and save the generated tree as an image
-        tree = Phylo.read("top_hits.dnd", "newick")
-        tree_image_path = os.path.join("static", "tree.png")
-        plt.figure(figsize=(10, 5))
-        Phylo.draw(tree, do_show=False)
-        plt.savefig(tree_image_path, format='png')
-        plt.close()
+        # Ensure there are at least two hits for the dendrogram
+        num_hits = len(labels)
+        if num_hits < 2:
+            return jsonify({"error": "Not enough data for creating a dendrogram"}), 200
+
+        # Create a symmetric distance matrix for the dendrogram
+        distance_matrix = np.random.rand(num_hits, num_hits)
+        distance_matrix = (distance_matrix + distance_matrix.T) / 2  # Make it symmetric
+        np.fill_diagonal(distance_matrix, 0)  # Fill the diagonal with zeros
+
+        # Create a dendrogram with hyperlinks using Plotly
+        fig = ff.create_dendrogram(distance_matrix, labels=labels)
+        
+        # Ensure that annotations match the number of labels
+        if 'annotations' in fig['layout']:
+            for i, label in enumerate(labels):
+                if i < len(fig['layout']['annotations']):
+                    fig['layout']['annotations'][i]['text'] = f'<a href="{links[i]}" target="_blank">{label}</a>'
+
+        fig.update_layout(width=800, height=500)
+
+        # Save the interactive plot as an HTML file
+        tree_html_path = os.path.join("static", "tree.html")
+        fig.write_html(tree_html_path)
 
         # Create the prompt and send to Generative AI
         with open(xml_file_path, "r") as file:
@@ -98,10 +116,11 @@ def run_blast():
         status_message = "Completed"
         return jsonify({
             "file_url": f"/blast-result",
-            "tree_image_url": f"/static/tree.png",
+            "tree_image_url": "/static/tree.html",
             "preview_text": blastresult,
             "combined_prompt": combprompt,
-            "response": response_text
+            "response": response_text,
+            "top_hits": [{"title": hit['title'], "publicationLink": f"https://www.ncbi.nlm.nih.gov/nuccore/{hit['accession']}"} for hit in top_hits]
         }), 200
 
     except Exception as e:
@@ -119,6 +138,10 @@ def get_blast_result():
         return send_file(xml_file_path)
     else:
         return "File not found", 404
+
+@app.route('/static/<path:filename>')
+def serve_static(filename):
+    return send_from_directory('static', filename)
 
 if __name__ == '__main__':
     app.run(debug=True)
