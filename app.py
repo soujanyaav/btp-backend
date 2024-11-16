@@ -101,11 +101,11 @@ def run_blast():
             blastresult = file.read(2000)
 
         prompt = (
-            "I am using this as an direct output to a website where the user inputs ascension number to get the source of collection so answer accordingly. "
+            "I am using this as a direct output to a website where the user inputs ascension number to get the source of collection so answer accordingly. "
             "I am sending the ascension number to the ncbi website which generates the XML/HTML file which is sent to you. Extract and identify the environmental "
             "source of collection for the organism. Include relevant details such as habitat type, specific location, and environmental conditions associated with "
-            "the organism or strain described. In most of the cases it may not have any source in it so use the details provided to give the source on your own using "
-            "all the relevant resources. Never say not given in this record, etc give the closest match that you encounter. Just give the output in one line."
+            "the organism or strain described. In most cases, it may not have any source in it so use the details provided to give the source on your own using "
+            "all relevant resources. Never say not given in this record, etc., give the closest match that you encounter. Just give the output in one line."
         )
 
         combprompt = prompt + "\n\n" + blastresult
