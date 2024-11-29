@@ -106,6 +106,7 @@ def run_blast():
             "source of collection for the organism. Include relevant details such as habitat type, specific location, and environmental conditions associated with "
             "the organism or strain described. In most cases, it may not have any source in it so use the details provided to give the source on your own using "
             "all relevant resources. Never say not given in this record, etc., give the closest match that you encounter. Just give the output in one line."
+            "Dont even say source not specified in data"
         )
 
         combprompt = prompt + "\n\n" + blastresult
